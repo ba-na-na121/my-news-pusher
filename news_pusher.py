@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from googletrans import Translator
 
-PUSHPLUS_TOKEN = "这里填你的PushPlus token"   # ← 改成你的真实 token
+PUSHPLUS_TOKEN = "f585cce97ca04f04af1bd2b8ceb06e7f"   # ← 改成你的真实 token
 
 translator = Translator()
 
