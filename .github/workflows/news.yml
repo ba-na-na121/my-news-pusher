@@ -1,0 +1,28 @@
+name: News Pusher
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'     # 每30分钟运行一次（推荐）
+  workflow_dispatch:           # 允许你手动点击测试
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install feedparser requests beautifulsoup4 googletrans==4.0.0-rc1
+      
+      - name: Run news pusher
+        env:
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: python news_pusher.py
