@@ -5,8 +5,7 @@ import time
 from datetime import datetime
 from googletrans import Translator
 
-# ================== 配置区 ==================
-PUSHPLUS_TOKEN = "f585cce97ca04f04af1bd2b8ceb06e7f"   # ←←← 改成你的真实 token
+PUSHPLUS_TOKEN = "f585cce97ca04f04af1bd2b8ceb06e7f"
 
 translator = Translator()
 
@@ -21,21 +20,20 @@ def send_to_wechat(title, content):
     }
     requests.post(url, json=data, timeout=10)
 
-# ================== 智能标签逻辑 ==================
 def add_label(title, summary):
-    text = (title + " " + summary).lower()
+    text = (title + " " + (summary or "")).lower()
     label = ""
-    if any(k in text for k in ["breaking", "urgent", "just", "flash", "突发"]):
+    if any(k in text for k in ["breaking", "urgent", "just", "flash"]):
         label += "【Breaking】"
-    if any(k in text for k in ["tesla", "spacex", "nvidia", "microsoft", "tsla", "领头", "龙头"]):
+    if any(k in text for k in ["tesla", "spacex", "nvidia", "microsoft", "tsla"]):
         label += "【领头公司】"
-    if any(k in text for k in ["ackman", "buffett", "trader", "大佬", "大交易员", "position", "stake"]):
+    if any(k in text for k in ["ackman", "buffett", "trader"]):
         label += "【大交易员】"
-    if any(k in text for k in ["trump", "伊朗", "iran", "tariff", "fed", "政治", "war", "hormuz"]):
+    if any(k in text for k in ["trump", "伊朗", "iran", "tariff", "fed", "war", "hormuz"]):
         label += "【政治】"
     return label.strip() + " " if label else ""
 
-# ================== 抓取 WSJ（全部抓取） ==================
+# ================== 改进后的 WSJ 抓取（尝试获取更长内容） ==================
 def fetch_wsj_news():
     rss_urls = [
         "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain",
@@ -43,23 +41,32 @@ def fetch_wsj_news():
     ]
     for rss_url in rss_urls:
         feed = feedparser.parse(rss_url)
-        for entry in feed.entries[:3]:   # 每源取3条最新
+        for entry in feed.entries[:4]:
             try:
                 label = add_label(entry.title, entry.summary if hasattr(entry, 'summary') else "")
                 title_cn = translator.translate(entry.title, dest='zh-cn').text
-                summary_cn = translator.translate(entry.summary[:400], dest='zh-cn').text if hasattr(entry, 'summary') else ""
-                content = f"{summary_cn}<br><br>原文: <a href='{entry.link}'>{entry.link}</a>"
-                send_to_wechat(f"{label}【WSJ】{title_cn}", content)
+                
+                # 尝试获取更长的摘要
+                summary = entry.summary if hasattr(entry, 'summary') else ""
+                summary_cn = translator.translate(summary[:600], dest='zh-cn').text if summary else "暂无摘要"
+                
+                content = f"""
+{summary_cn}
+
+<br><br>
+原文链接: <a href="{entry.link}">{entry.link}</a>
+                """
+                send_to_wechat(f"{label}【WSJ】{title_cn}", content.strip())
             except:
                 pass
 
-# ================== 抓取 Moomoo（全部抓取） ==================
+# ================== Moomoo 抓取 ==================
 def fetch_moomoo_news():
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
         resp = requests.get("https://www.moomoo.com/us/news", headers=headers, timeout=15)
         soup = BeautifulSoup(resp.text, 'html.parser')
-        articles = soup.find_all('div', class_=lambda x: x and ('news' in str(x).lower() or 'item' in str(x).lower()))[:5]
+        articles = soup.find_all('div', class_=lambda x: x and ('news' in str(x).lower() or 'item' in str(x).lower()))[:6]
         
         for article in articles:
             title_tag = article.find(['h2', 'h3', 'a'])
@@ -79,12 +86,12 @@ def fetch_moomoo_news():
     except Exception as e:
         print(f"Moomoo抓取失败: {e}")
 
-# ================== 主循环 ==================
+# 主循环 - 每30分钟一次（推荐）
 if __name__ == "__main__":
-    print("全量新闻推送机器人已启动（每15分钟抓取一次）...")
+    print("改进版新闻推送机器人已启动（每30分钟一次）...")
     while True:
-        print(f"[{datetime.now()}] 开始抓取所有最新新闻并打标签...")
+        print(f"[{datetime.now()}] 开始抓取新闻...")
         fetch_wsj_news()
         fetch_moomoo_news()
-        print(f"[{datetime.now()}] 本轮完成，休息15分钟...\n")
-        time.sleep(15 * 60)
+        print(f"[{datetime.now()}] 本轮完成，休息30分钟...\n")
+        time.sleep(30 * 60)
