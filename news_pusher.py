@@ -5,30 +5,12 @@ import time
 from datetime import datetime
 from googletrans import Translator
 
-# ================== 配置区 ==================
-PUSHPLUS_TOKEN = "这里填你的PushPlus token"   # ←←← 改成你的真实 token
+PUSHPLUS_TOKEN = "这里填你的PushPlus token"   # ← 改成你的真实 token
 
 translator = Translator()
 
-# 去重文件（自动创建）
-SENT_FILE = "sent_links.txt"
-
-def load_sent_links():
-    try:
-        with open(SENT_FILE, "r", encoding="utf-8") as f:
-            return set(line.strip() for line in f if line.strip())
-    except FileNotFoundError:
-        return set()
-
-def save_sent_link(link):
-    with open(SENT_FILE, "a", encoding="utf-8") as f:
-        f.write(link + "\n")
-
-sent_links = load_sent_links()
-
-def send_to_wechat(title, content, link):
-    if link in sent_links:
-        return False  # 已推送过，跳过
+def send_to_wechat(title, content):
+    print(f"[推送] 标题: {title}")
     url = "https://www.pushplus.plus/send"
     data = {
         "token": PUSHPLUS_TOKEN,
@@ -38,87 +20,40 @@ def send_to_wechat(title, content, link):
         "channel": "wechat"
     }
     try:
-        requests.post(url, json=data, timeout=10)
-        save_sent_link(link)      # 记录已推送
-        sent_links.add(link)
-        print(f"推送成功: {title}")
-        return True
+        resp = requests.post(url, json=data, timeout=10)
+        print(f"[推送成功] 状态码: {resp.status_code} | 标题: {title[:50]}...")
     except Exception as e:
-        print(f"推送失败: {e}")
-        return False
+        print(f"[推送失败] 错误: {e}")
 
-def add_label(title, summary=""):
-    text = (title + " " + summary).lower()
-    label = ""
-    if any(k in text for k in ["breaking", "urgent", "just", "flash", "突发"]):
-        label += "【Breaking】"
-    if any(k in text for k in ["tesla", "spacex", "nvidia", "microsoft", "tsla"]):
-        label += "【领头公司】"
-    if any(k in text for k in ["ackman", "buffett", "trader", "大佬"]):
-        label += "【大交易员】"
-    if any(k in text for k in ["trump", "伊朗", "iran", "tariff", "fed", "war", "hormuz", "政治"]):
-        label += "【政治】"
-    return label.strip() + " " if label else ""
-
-# ================== WSJ 抓取 ==================
+# ================== 极简 WSJ 测试 ==================
 def fetch_wsj_news():
-    rss_urls = [
-        "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain",
-        "https://feeds.content.dowjones.io/public/rss/RSSWorldNews"
-    ]
-    for rss_url in rss_urls:
-        feed = feedparser.parse(rss_url)
-        for entry in feed.entries[:5]:
-            link = entry.link
-            if link in sent_links:
-                continue
-            try:
-                label = add_label(entry.title, getattr(entry, 'summary', ''))
-                title_cn = translator.translate(entry.title, dest='zh-cn').text
-                summary = getattr(entry, 'summary', '')[:600]
-                summary_cn = translator.translate(summary, dest='zh-cn').text if summary else "暂无摘要"
-                
-                content = f"{summary_cn}<br><br>原文链接: <a href='{link}'>{link}</a>"
-                send_to_wechat(f"{label}【WSJ】{title_cn}", content, link)
-            except:
-                pass
+    print("[WSJ] 开始抓取...")
+    rss_url = "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain"
+    feed = feedparser.parse(rss_url)
+    print(f"[WSJ] 抓到 {len(feed.entries)} 条新闻")
+    
+    for entry in feed.entries[:3]:   # 只取前3条测试
+        try:
+            title_cn = translator.translate(entry.title, dest='zh-cn').text
+            print(f"[WSJ] 翻译成功: {title_cn[:60]}...")
+            send_to_wechat(f"【WSJ测试】{title_cn}", "测试推送 - 请忽略此条")
+        except Exception as e:
+            print(f"[WSJ] 处理失败: {e}")
 
-# ================== Moomoo 抓取 ==================
+# ================== 极简 Moomoo 测试 ==================
 def fetch_moomoo_news():
+    print("[Moomoo] 开始抓取...")
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
         resp = requests.get("https://www.moomoo.com/us/news", headers=headers, timeout=15)
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        articles = soup.find_all(['h1', 'h2', 'h3', 'article', 'div'])[:15]
-        
-        for article in articles:
-            title_tag = article.find(['h1', 'h2', 'h3', 'a'])
-            if not title_tag:
-                continue
-            title = title_tag.get_text().strip()
-            link = title_tag.get('href')
-            if not link:
-                continue
-            if not link.startswith('http'):
-                link = "https://www.moomoo.com" + link
-            if link in sent_links:
-                continue
-                
-            try:
-                label = add_label(title)
-                title_cn = translator.translate(title, dest='zh-cn').text
-                send_to_wechat(f"{label}【Moomoo】{title_cn}", f"链接: {link}", link)
-            except:
-                pass
+        print(f"[Moomoo] 页面状态码: {resp.status_code}, 内容长度: {len(resp.text)}")
+        print("[Moomoo] 抓取成功，但本次只测试WSJ，Moomoo暂不推送")
     except Exception as e:
-        print(f"Moomoo抓取失败: {e}")
+        print(f"[Moomoo] 抓取失败: {e}")
 
-# ================== 主循环（每30分钟一次） ==================
+# 主循环 - 只跑一次用于诊断
 if __name__ == "__main__":
-    print("去重版新闻推送机器人已启动（每30分钟一次）...")
-    while True:
-        print(f"[{datetime.now()}] 开始抓取并去重推送...")
-        fetch_wsj_news()
-        fetch_moomoo_news()
-        print(f"[{datetime.now()}] 本轮完成，休息30分钟...\n")
-        time.sleep(30 * 60)
+    print(f"[{datetime.now()}] === 诊断版启动 ===")
+    fetch_wsj_news()
+    fetch_moomoo_news()
+    print(f"[{datetime.now()}] === 诊断运行结束 ===")
